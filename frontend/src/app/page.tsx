@@ -71,7 +71,9 @@ export default function Home() {
 
     const fetchIndexerData = async () => {
         try {
-            const res = await fetch("http://localhost:3001/stats");
+            // Use environment variable or relative path (proxied by Nginx in production)
+            const indexerUrl = process.env.NEXT_PUBLIC_INDEXER_URL || '';
+            const res = await fetch(`${indexerUrl}/stats`);
             if (res.ok) {
                 const data = await res.json();
                 setRecentTrades(data.trades || []);
