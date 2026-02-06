@@ -5,10 +5,10 @@ import { open, Database } from 'sqlite';
 import fs from 'fs';
 import path from 'path';
 
-// --- Configuration ---
-const PORT = 3001;
-// Assuming we are running a local hardhat node
-const RPC_URL = "http://127.0.0.1:8545";
+// --- Configuration (from environment) ---
+const PORT = process.env.PORT || 3001;
+const RPC_URL = process.env.RPC_URL || "http://127.0.0.1:8545";
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'];
 
 // Paths to Artifacts (Directly from contracts folder)
 const ARTIFACTS_DIR = path.join(__dirname, '../../contracts/artifacts/contracts');
@@ -70,10 +70,17 @@ async function startListener() {
 const app = express();
 app.use(express.json());
 
-// Enable CORS for frontend
+// Enable CORS for frontend (production-ready)
 app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
+    const origin = req.headers.origin;
+    if (!origin || ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGINS.includes('*')) {
+        res.header("Access-Control-Allow-Origin", origin || "*");
+    }
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
     next();
 });
 
