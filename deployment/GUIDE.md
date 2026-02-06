@@ -50,10 +50,12 @@ pm2 status
 # Logs en temps réel
 pm2 logs
 
-# Tester les endpoints
+# Tester les endpoints (depuis le VPS)
 curl http://localhost:3000  # Frontend
 curl http://localhost:3001/stats  # Indexer
 ```
+
+**Accès depuis l'extérieur** : `http://VOTRE_IP_VPS`
 
 ---
 
