@@ -96,6 +96,83 @@ export default function AdminPage() {
         }
     };
 
+    const handleSeedMarket = async () => {
+        setLoading(true);
+        const toastId = toast.loading("Initializing Default Artworks...");
+
+        // The 3 default tableaux
+        const defaultArtworks = [
+            "Mona Lisa #1 - Analysis",
+            "Starry Night #2",
+            "The Scream #3"
+        ];
+        // Default price: 0.1 ETH
+        const defaultPrice = ethers.parseEther("0.1");
+
+        try {
+            const contract = await getNftContract();
+            const provider = new ethers.BrowserProvider((window as any).ethereum);
+            const signer = await provider.getSigner();
+            const address = await signer.getAddress();
+
+            let mintedCount = 0;
+
+            for (const uri of defaultArtworks) {
+                try {
+                    toast.loading(`Processing ${uri.split(' #')[0]}...`, { id: toastId });
+
+                    // 1. Check if already minted (skip complexity for now, just try to mint)
+                    // If we assume a fresh deploy or we just mint new copies
+
+                    // 2. Mint
+                    console.log(`Minting ${uri}...`);
+                    const txMint = await contract.mint(address, uri);
+                    await txMint.wait();
+                    console.log(`Minted ${uri}`);
+
+                    // 3. Get Token ID
+                    // We can't easily get the ID from the tx receipt without parsing events carefully
+                    // But since we are the owner and we just minted, let's grab the last token ID
+                    // OR, better, finding the token ID by URI if the contract supports it, OR finding by owner index.
+
+                    // Allow a small delay for indexer/node to catch up? 
+                    // Actually, let's just use the `nextTokenId` - 1 approach if we are the only minter?
+                    // Unsafe in concurrent env, but fine for local/admin seeding.
+
+                    const nextId = await contract.nextTokenId();
+                    // The one we just minted is nextId - 1 (since post-increment usually? or pre? let's check contract logic if possible)
+                    // Standard: usually counter starts at 0 or 1.
+                    // Let's assume (nextId - 1) is ours.
+                    const newTokenId = Number(nextId) - 1;
+
+                    // 4. List for Sale
+                    console.log(`Listing #${newTokenId} for sale...`);
+                    const txList = await contract.listForSale(newTokenId, defaultPrice);
+                    await txList.wait();
+
+                    mintedCount++;
+                } catch (innerErr) {
+                    console.error(`Failed to process ${uri}`, innerErr);
+                    // Continue to next one
+                }
+            }
+
+            toast.dismiss(toastId);
+            if (mintedCount > 0) {
+                toast.success("Market Seeded!", { description: `${mintedCount} artworks minted and listed.` });
+            } else {
+                toast.warning("Seeding incomplete", { description: "Check console for errors." });
+            }
+
+        } catch (error: any) {
+            console.error(error);
+            toast.dismiss(toastId);
+            toast.error("Seeding Failed", { description: error.reason || error.message });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // Pre-defined art pieces that can be minted
     const artPieces = [
         "Mona Lisa #1 - Analysis",
@@ -190,6 +267,34 @@ export default function AdminPage() {
                             {mintingNft ? "Minting..." : "Mint NFT"}
                         </button>
                     </div>
+                </div>
+
+                {/* Seed Marketplace */}
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 md:col-span-2">
+                    <h2 className="text-lg font-semibold mb-4">🌱 Seed Marketplace (Default Artworks)</h2>
+                    <p className="text-sm text-gray-500 mb-4">
+                        Automatically mint and list the 3 default "tableaux" (Mona Lisa, Starry Night, The Scream) for sale.
+                        This ensures new users have artworks to buy.
+                    </p>
+                    <button
+                        onClick={handleSeedMarket}
+                        disabled={loading}
+                        className="w-full md:w-auto bg-gradient-to-r from-green-600 to-teal-600 text-white py-3 px-6 rounded-lg hover:from-green-700 hover:to-teal-700 disabled:opacity-50 font-bold shadow-md transition-all flex items-center justify-center gap-2"
+                    >
+                        {loading ? (
+                            <>
+                                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Seeding Market...
+                            </>
+                        ) : (
+                            <>
+                                🚀 Initialize & List Default Artworks
+                            </>
+                        )}
+                    </button>
                 </div>
 
                 {/* Oracle Management */}
