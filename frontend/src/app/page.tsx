@@ -71,9 +71,11 @@ export default function Home() {
 
     const fetchIndexerData = async () => {
         try {
-            // Use environment variable or relative path (proxied by Nginx in production)
-            const indexerUrl = process.env.NEXT_PUBLIC_INDEXER_URL || '';
-            const res = await fetch(`${indexerUrl}/stats`);
+            // In production: NEXT_PUBLIC_INDEXER_URL is empty, use /api/stats (Nginx routes to indexer)
+            // In dev: NEXT_PUBLIC_INDEXER_URL=http://localhost:3001, use /stats directly
+            const indexerUrl = process.env.NEXT_PUBLIC_INDEXER_URL;
+            const endpoint = indexerUrl ? `${indexerUrl}/stats` : '/api/stats';
+            const res = await fetch(endpoint);
             if (res.ok) {
                 const data = await res.json();
                 setRecentTrades(data.trades || []);
