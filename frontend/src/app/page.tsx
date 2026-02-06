@@ -7,6 +7,7 @@ import contractsConfig from '@/lib/contracts-config.json';
 import { ContractABIs } from '@/lib/contracts';
 import { toast } from 'sonner';
 import { PriceChart } from '@/components/PriceChart';
+import staticPriceData from '@/data/static-price-data.json';
 
 type TradeEvent = {
     id: number;
@@ -22,9 +23,9 @@ export default function Home() {
     const [isWhitelisted, setIsWhitelisted] = useState(false);
     const [loading, setLoading] = useState(true);
 
-    // Market Data
-    const [goldPrice, setGoldPrice] = useState("0");
-    const [artFloor, setArtFloor] = useState("0.001"); // Fixed value from NFT contract
+    // Market Data (static from file so all users see the same)
+    const [goldPrice, setGoldPrice] = useState(staticPriceData.currentPrice);
+    const [artFloor, setArtFloor] = useState(staticPriceData.artFloor);
 
     // Transfer State
     const [recipient, setRecipient] = useState("");
@@ -50,17 +51,16 @@ export default function Home() {
             const oracle = new ethers.Contract(contractsConfig.oracleAddress, ContractABIs.AssetOracle, signer);
 
             // Parallel Fetch
-            const [verified, tokenBalance, ethBal, gldPriceWei] = await Promise.all([
+            const [verified, tokenBalance, ethBal] = await Promise.all([
                 compliance.isVerified(address),
                 token.balanceOf(address),
-                provider.getBalance(address),
-                oracle.getPrice("GLD")
+                provider.getBalance(address)
             ]);
 
             setIsWhitelisted(verified);
             setBalance(ethers.formatEther(tokenBalance));
             setEthBalance(ethers.formatEther(ethBal));
-            setGoldPrice(ethers.formatEther(gldPriceWei));
+            // Gold price and art floor stay from static file (staticPriceData)
 
         } catch (err) {
             console.error("Dashboard fetch error:", err);

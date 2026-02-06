@@ -4,6 +4,20 @@ import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { cn } from "@/lib/utils";
 
+/** Prefer MetaMask when multiple wallets inject window.ethereum (avoids buggy extensions like evmAsk). */
+function getEthereumProvider(): unknown {
+    const w = typeof window !== "undefined" ? (window as any) : undefined;
+    const ethereum = w?.ethereum;
+    if (!ethereum) return undefined;
+    // When multiple wallets are installed, some expose ethereum.providers[]; prefer MetaMask
+    const providers = ethereum.providers;
+    if (Array.isArray(providers)) {
+        const metamask = providers.find((p: any) => p?.isMetaMask);
+        if (metamask) return metamask;
+    }
+    return ethereum;
+}
+
 interface WalletConnectProps {
     className?: string;
     onConnect?: (address: string) => void;
@@ -16,19 +30,18 @@ export function WalletConnect({ className, onConnect }: WalletConnectProps) {
     // Check if already connected
     useEffect(() => {
         const checkConnection = async () => {
-            // Cast window to any to avoid TS error with 'ethereum'
-            if (typeof (window as any).ethereum !== "undefined") {
-                try {
-                    const provider = new ethers.BrowserProvider((window as any).ethereum);
-                    const accounts = await provider.listAccounts();
-                    if (accounts.length > 0) {
-                        const address = await accounts[0].getAddress();
-                        setAccount(address);
-                        if (onConnect) onConnect(address);
-                    }
-                } catch (err) {
-                    console.error("Failed to check wallet connection", err);
+            const providerSrc = getEthereumProvider();
+            if (!providerSrc) return;
+            try {
+                const provider = new ethers.BrowserProvider(providerSrc as ethers.Eip1193Provider);
+                const accounts = await provider.listAccounts();
+                if (accounts.length > 0) {
+                    const address = await accounts[0].getAddress();
+                    setAccount(address);
+                    if (onConnect) onConnect(address);
                 }
+            } catch {
+                // Ignore: often caused by another extension (e.g. evmAsk) owning window.ethereum
             }
         };
         checkConnection();
@@ -46,21 +59,27 @@ export function WalletConnect({ className, onConnect }: WalletConnectProps) {
             return;
         }
 
-        if (typeof (window as any).ethereum === "undefined") {
-            alert("Please install MetaMask!");
+        const providerSrc = getEthereumProvider();
+        if (!providerSrc) {
+            alert("Please install MetaMask (or another Web3 wallet).");
             return;
         }
 
         setLoading(true);
         try {
-            const provider = new ethers.BrowserProvider((window as any).ethereum);
-            // Request access
+            const provider = new ethers.BrowserProvider(providerSrc as ethers.Eip1193Provider);
             const signer = await provider.getSigner();
             const address = await signer.getAddress();
             setAccount(address);
             if (onConnect) onConnect(address);
-        } catch (err) {
-            console.error("User rejected request", err);
+        } catch (err: any) {
+            const msg = err?.message ?? String(err);
+            if (msg.includes("reject") || msg.includes("denied") || err?.code === 4001) {
+                // User cancelled in wallet
+                return;
+            }
+            console.error("Wallet connection failed", err);
+            alert("Wallet connection failed. Try MetaMask, or disable other wallet extensions (e.g. evmAsk) that may conflict.");
         } finally {
             setLoading(false);
         }
