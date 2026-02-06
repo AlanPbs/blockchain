@@ -3,20 +3,7 @@
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { cn } from "@/lib/utils";
-
-/** Prefer MetaMask when multiple wallets inject window.ethereum (avoids buggy extensions like evmAsk). */
-function getEthereumProvider(): unknown {
-    const w = typeof window !== "undefined" ? (window as any) : undefined;
-    const ethereum = w?.ethereum;
-    if (!ethereum) return undefined;
-    // When multiple wallets are installed, some expose ethereum.providers[]; prefer MetaMask
-    const providers = ethereum.providers;
-    if (Array.isArray(providers)) {
-        const metamask = providers.find((p: any) => p?.isMetaMask);
-        if (metamask) return metamask;
-    }
-    return ethereum;
-}
+import { getEthereumProvider } from "@/lib/ethereum";
 
 interface WalletConnectProps {
     className?: string;

@@ -7,6 +7,7 @@ import contractsConfig from '@/lib/contracts-config.json';
 import { ContractABIs } from '@/lib/contracts';
 import { toast } from 'sonner';
 import { ArrowDownUp, RefreshCw, Wallet } from 'lucide-react';
+import { getEthereumProvider } from '@/lib/ethereum';
 
 export default function TradePage() {
   const [amount, setAmount] = useState("");
@@ -16,37 +17,50 @@ export default function TradePage() {
   const [price, setPrice] = useState("0.01"); // Default price
   const [balance, setBalance] = useState("--");
   const [isVerified, setIsVerified] = useState<boolean | null>(null);
+  const [contractError, setContractError] = useState<string | null>(null);
 
   // Fetch Balance, Price & verification status
   const fetchMarketData = async () => {
-    if (typeof (window as any).ethereum === "undefined") return;
+    const providerSrc = getEthereumProvider();
+    if (!providerSrc) return;
+    setContractError(null);
     try {
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const provider = new ethers.BrowserProvider(providerSrc as ethers.Eip1193Provider);
       const signer = await provider.getSigner();
       const address = await signer.getAddress();
 
       const compliance = new ethers.Contract(contractsConfig.complianceAddress, ContractABIs.ComplianceRegistry, signer);
-      const verified = await compliance.isVerified(address);
-      setIsVerified(verified);
-
       const token = new ethers.Contract(contractsConfig.tokenAddress, ContractABIs.AssetToken, signer);
       const oracle = new ethers.Contract(contractsConfig.oracleAddress, ContractABIs.AssetOracle, signer);
 
-      // Get Price
-      const priceWei = await oracle.getPrice("GLD");
-      const priceEth = ethers.formatEther(priceWei);
-      setPrice(priceEth);
+      try {
+        const verified = await compliance.isVerified(address);
+        setIsVerified(verified);
+      } catch {
+        setIsVerified(false);
+      }
 
-      // Get Balance
-      let bal = "0";
+      try {
+        const priceWei = await oracle.getPrice("GLD");
+        setPrice(ethers.formatEther(priceWei));
+      } catch {
+        setPrice("0.01");
+      }
+
       if (isBuy) {
         const ethBal = await provider.getBalance(address);
-        bal = ethers.formatEther(ethBal);
-        setBalance(parseFloat(bal).toFixed(4));
+        setBalance(parseFloat(ethers.formatEther(ethBal)).toFixed(4));
       } else {
-        const gldBal = await token.balanceOf(address);
-        bal = ethers.formatEther(gldBal);
-        setBalance(parseFloat(bal).toFixed(2));
+        try {
+          const gldBal = await token.balanceOf(address);
+          setBalance(parseFloat(ethers.formatEther(gldBal)).toFixed(2));
+        } catch (e: any) {
+          const isBadData = e?.code === "BAD_DATA" || e?.message?.includes("could not decode");
+          setBalance("0.00");
+          if (isBadData) {
+            setContractError("Token not available on this network. Switch to the correct chain (see config).");
+          }
+        }
       }
     } catch (e) {
       console.error("Trade data fetch failed", e);
@@ -89,8 +103,9 @@ export default function TradePage() {
     const toastId = toast.loading("Processing Transaction...");
 
     try {
-      if (typeof (window as any).ethereum === "undefined") throw new Error("No Wallet");
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const providerSrc = getEthereumProvider();
+      if (!providerSrc) throw new Error("No Wallet");
+      const provider = new ethers.BrowserProvider(providerSrc as ethers.Eip1193Provider);
       const signer = await provider.getSigner();
       const dexContract = new ethers.Contract(contractsConfig.dexAddress, ContractABIs.SimpleDEX, signer);
 
@@ -191,7 +206,13 @@ export default function TradePage() {
               </div>
             </div>
 
-            {isVerified === false && (
+            {contractError && (
+              <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-sm">
+                <p className="text-amber-800 font-medium">{contractError}</p>
+              </div>
+            )}
+
+            {isVerified === false && !contractError && (
               <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-sm">
                 <p className="text-amber-800 font-medium">You must be verified to trade.</p>
                 <p className="text-amber-700 mt-1">Get verified on the home page, then return here to swap.</p>
