@@ -33,8 +33,19 @@ export const ContractABIs = {
         "function ownerOf(uint256 tokenId) external view returns (address)",
         "function tokenURI(uint256 tokenId) external view returns (string)",
         "function transferFrom(address from, address to, uint256 tokenId) external",
-        "function buyNFT(string memory _uri) external payable",
-        "function mintedURIs(string memory _uri) external view returns (bool)"
+        "function mintedURIs(string memory _uri) external view returns (bool)",
+        "function nextTokenId() external view returns (uint256)",
+        // Admin functions
+        "function mint(address to, string memory _uri) external",
+        // Marketplace functions
+        "function listForSale(uint256 tokenId, uint256 price) external",
+        "function cancelListing(uint256 tokenId) external",
+        "function buyNFT(uint256 tokenId) external payable",
+        "function getListing(uint256 tokenId) external view returns (address seller, uint256 price, bool isActive)",
+        // Events
+        "event NFTListed(uint256 indexed tokenId, address indexed seller, uint256 price)",
+        "event NFTSold(uint256 indexed tokenId, address indexed buyer, address indexed seller, uint256 price)",
+        "event ListingCancelled(uint256 indexed tokenId)"
     ],
     SimpleDEX: [
         "function buyTokens() external payable",
