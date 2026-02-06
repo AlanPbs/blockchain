@@ -98,8 +98,9 @@ async function main() {
     console.log("Contracts config saved to frontend/src/lib/contracts-config.json");
 
     // --- Notify Indexer ---
+    const indexerUrl = process.env.INDEXER_URL || "http://localhost:3001";
     try {
-        const response = await fetch("http://localhost:3001/init-contracts", {
+        const response = await fetch(`${indexerUrl}/init-contracts`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(contractsConfig)
