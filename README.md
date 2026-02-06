@@ -34,16 +34,16 @@ We chose an **EVM-compatible architecture** (Hardhat/Ethereum) for the following
 
 ### 1. Installation
 
-\`\`\`bash
+```bash
 # Install dependencies for all services
 cd contracts && npm install
 cd ../indexer && npm install
 cd ../frontend && npm install
-\`\`\`
+```
 
 ### 2. Smart Contracts (Local / Hardhat)
 
-\`\`\`bash
+```bash
 cd contracts
 
 # Compile contracts
@@ -54,29 +54,29 @@ npx hardhat run scripts/deploy.ts --network localhost
 
 # OR Start local node (and deploy manually)
 npx hardhat node
-\`\`\`
+```
 
 > **Note**: After deployment, copy the contract addresses output to use in the Indexer/Frontend configuration.
 
 ### 3. Indexer Service
 
-\`\`\`bash
+```bash
 cd indexer
 
 # Start the indexer (ensure local node is running)
 npm run dev
-\`\`\`
+```
 
 The indexer runs on `http://localhost:3001`.
 
 ### 4. Frontend
 
-\`\`\`bash
+```bash
 cd frontend
 
 # Start development server
 npm run dev
-\`\`\`
+```
 
 Open `http://localhost:3000` in your browser.
 
