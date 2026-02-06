@@ -29,14 +29,19 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
-# Hardhat
-cache
-artifacts
-typechain
-typechain-types
+# Hardhat and Build Artifacts
+**/cache
+**/artifacts
+**/typechain
+**/typechain-types
+**/out
+**/build
+**/dist
+**/.next
+**/node_modules
 
 # Editor
-.vscode/*
-!.vscode/extensions.json
-.idea
-*.swp
+**/.vscode/*
+!**/.vscode/extensions.json
+**/.idea
+**/*.swp
