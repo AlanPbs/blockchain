@@ -15,6 +15,10 @@ export default function AdminPage() {
     const [nftUri, setNftUri] = useState("");
     const [mintingNft, setMintingNft] = useState(false);
 
+    // Auth state
+    const [isOwner, setIsOwner] = useState(false);
+    const [checkingAuth, setCheckingAuth] = useState(true);
+
     const getComplianceContract = async () => {
         if (typeof (window as any).ethereum === "undefined") throw new Error("No Wallet");
         const provider = new ethers.BrowserProvider((window as any).ethereum);
@@ -95,6 +99,33 @@ export default function AdminPage() {
             setMintingNft(false);
         }
     };
+
+    const checkAdminStatus = async () => {
+        if (typeof (window as any).ethereum === "undefined") {
+            setCheckingAuth(false);
+            return;
+        }
+        try {
+            const provider = new ethers.BrowserProvider((window as any).ethereum);
+            const signer = await provider.getSigner();
+            const address = await signer.getAddress();
+
+            const nftContract = new ethers.Contract(contractsConfig.nftAddress, ContractABIs.AssetNFT, provider);
+            const owner = await nftContract.owner();
+
+            setIsOwner(owner.toLowerCase() === address.toLowerCase());
+        } catch (e) {
+            console.error("Auth check failed", e);
+            setIsOwner(false);
+        } finally {
+            setCheckingAuth(false);
+        }
+    };
+
+    // Initial check
+    useState(() => {
+        checkAdminStatus();
+    });
 
     const handleSeedMarket = async () => {
         setLoading(true);
@@ -181,6 +212,21 @@ export default function AdminPage() {
         "The Persistence of Memory #4",
         "Girl with a Pearl Earring #5"
     ];
+
+    if (checkingAuth) {
+        return <div className="min-h-screen flex items-center justify-center text-slate-500">Verifying Admin Privileges...</div>;
+    }
+
+    if (!isOwner) {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50">
+                <div className="text-4xl">🚫</div>
+                <h1 className="text-2xl font-bold text-slate-800">Access Denied</h1>
+                <p className="text-slate-500">You are not the owner of the contract.</p>
+                <a href="/" className="text-blue-600 hover:underline">Return Home</a>
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-4xl mx-auto space-y-8">

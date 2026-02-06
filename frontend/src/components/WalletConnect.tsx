@@ -59,8 +59,17 @@ export function WalletConnect({ className, onConnect }: WalletConnectProps) {
             const address = await signer.getAddress();
             setAccount(address);
             if (onConnect) onConnect(address);
-        } catch (err) {
-            console.error("User rejected request", err);
+        } catch (err: any) {
+            console.error("Connection error", err);
+            // MetaMask error code -32002: Request of type 'wallet_requestPermissions' already pending
+            if (err.code === -32002 || (err.info && err.info.error && err.info.error.code === -32002)) {
+                alert("A connection request is already pending. Please open your MetaMask extension to approve it.");
+            } else if (err.code === 4001) {
+                // User rejected request
+                console.log("User rejected connection");
+            } else {
+                alert("Failed to connect wallet: " + (err.message || "Unknown error"));
+            }
         } finally {
             setLoading(false);
         }

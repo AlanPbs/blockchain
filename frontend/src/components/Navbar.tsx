@@ -1,7 +1,11 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { ethers } from "ethers";
 import { WalletConnect } from "./WalletConnect";
+import contractsConfig from '@/lib/contracts-config.json';
+import { ContractABIs } from '@/lib/contracts';
 
 export function Navbar() {
     return (
