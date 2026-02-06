@@ -45,3 +45,10 @@ yarn-error.log*
 !**/.vscode/extensions.json
 **/.idea
 **/*.swp
+
+# Logs (PM2)
+logs/
+*.log
+
+# Database
+indexer/indexer.db
