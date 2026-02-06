@@ -39,6 +39,7 @@ export const ContractABIs = {
         "function nextTokenId() external view returns (uint256)",
         // Admin functions
         "function mint(address to, string memory _uri) external",
+        "function transferOwnership(address newOwner) external",
         // Marketplace functions
         "function listForSale(uint256 tokenId, uint256 price) external",
         "function cancelListing(uint256 tokenId) external",

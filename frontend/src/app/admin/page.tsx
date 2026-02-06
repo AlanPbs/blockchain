@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import contractsConfig from '@/lib/contracts-config.json';
 import { ContractABIs } from '@/lib/contracts';
@@ -18,6 +18,12 @@ export default function AdminPage() {
     // Auth state
     const [isOwner, setIsOwner] = useState(false);
     const [checkingAuth, setCheckingAuth] = useState(true);
+    const [contractOwnerAddress, setContractOwnerAddress] = useState<string | null>(null);
+    const [currentUserAddress, setCurrentUserAddress] = useState<string | null>(null);
+
+    // Transfer ownership (when you are owner)
+    const [newOwnerAddress, setNewOwnerAddress] = useState("");
+    const [transferring, setTransferring] = useState(false);
 
     const getComplianceContract = async () => {
         if (typeof (window as any).ethereum === "undefined") throw new Error("No Wallet");
@@ -113,19 +119,46 @@ export default function AdminPage() {
             const nftContract = new ethers.Contract(contractsConfig.nftAddress, ContractABIs.AssetNFT, provider);
             const owner = await nftContract.owner();
 
+            setContractOwnerAddress(owner);
+            setCurrentUserAddress(address);
             setIsOwner(owner.toLowerCase() === address.toLowerCase());
         } catch (e) {
             console.error("Auth check failed", e);
             setIsOwner(false);
+            setContractOwnerAddress(null);
+            setCurrentUserAddress(null);
         } finally {
             setCheckingAuth(false);
         }
     };
 
-    // Initial check
-    useState(() => {
+    useEffect(() => {
         checkAdminStatus();
-    });
+    }, []);
+
+    const handleTransferOwnership = async () => {
+        if (!newOwnerAddress || !ethers.isAddress(newOwnerAddress)) {
+            toast.error("Enter a valid address");
+            return;
+        }
+        setTransferring(true);
+        const toastId = toast.loading("Transferring ownership...");
+        try {
+            const contract = await getNftContract();
+            const tx = await contract.transferOwnership(newOwnerAddress);
+            await tx.wait();
+            toast.dismiss(toastId);
+            toast.success("Ownership transferred", { description: `New admin: ${newOwnerAddress.slice(0, 10)}...` });
+            setNewOwnerAddress("");
+            await checkAdminStatus();
+        } catch (error: any) {
+            console.error(error);
+            toast.dismiss(toastId);
+            toast.error("Transfer failed", { description: error.reason || error.message });
+        } finally {
+            setTransferring(false);
+        }
+    };
 
     const handleSeedMarket = async () => {
         setLoading(true);
@@ -219,10 +252,29 @@ export default function AdminPage() {
 
     if (!isOwner) {
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50">
+            <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50 p-6">
                 <div className="text-4xl">🚫</div>
                 <h1 className="text-2xl font-bold text-slate-800">Access Denied</h1>
                 <p className="text-slate-500">You are not the owner of the contract.</p>
+                <div className="mt-4 p-4 bg-white rounded-lg border border-slate-200 text-left max-w-md space-y-2 font-mono text-sm">
+                    <p><span className="text-slate-500">Contract owner (admin):</span>{' '}
+                        {contractOwnerAddress ? (
+                            <span className="text-slate-800 break-all">{contractOwnerAddress}</span>
+                        ) : (
+                            <span className="text-slate-400">—</span>
+                        )}
+                    </p>
+                    <p><span className="text-slate-500">Your address:</span>{' '}
+                        {currentUserAddress ? (
+                            <span className="text-slate-800 break-all">{currentUserAddress}</span>
+                        ) : (
+                            <span className="text-slate-400">—</span>
+                        )}
+                    </p>
+                </div>
+                <p className="text-slate-600 text-sm text-center max-w-md">
+                    Connect with the deployer wallet to access the admin panel. If you deployed with <code className="bg-slate-200 px-1 rounded">PRIVATE_KEY</code> in <code className="bg-slate-200 px-1 rounded">.env</code>, import that key into MetaMask (same network as contracts).
+                </p>
                 <a href="/" className="text-blue-600 hover:underline">Return Home</a>
             </div>
         );
@@ -233,6 +285,31 @@ export default function AdminPage() {
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                 <h1 className="text-2xl font-bold text-gray-900">🔧 Admin Panel</h1>
                 <p className="text-gray-500 mt-2">Manage KYC compliance, mint NFTs, and update oracle prices.</p>
+                {contractOwnerAddress && (
+                    <p className="text-sm text-gray-500 mt-2 font-mono">Current contract owner: {contractOwnerAddress}</p>
+                )}
+            </div>
+
+            {/* Transfer ownership */}
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 className="text-lg font-semibold mb-4">👑 Transfer admin (ownership)</h2>
+                <p className="text-sm text-gray-500 mb-4">Give admin rights to another address. Only the current owner can do this.</p>
+                <div className="flex gap-2 flex-wrap">
+                    <input
+                        type="text"
+                        placeholder="New owner address (0x...)"
+                        className="flex-1 min-w-[200px] p-2 border border-gray-300 rounded-md text-sm font-mono"
+                        value={newOwnerAddress}
+                        onChange={(e) => setNewOwnerAddress(e.target.value)}
+                    />
+                    <button
+                        onClick={handleTransferOwnership}
+                        disabled={transferring || !newOwnerAddress}
+                        className="bg-amber-600 text-white py-2 px-4 rounded-md hover:bg-amber-700 disabled:opacity-50"
+                    >
+                        {transferring ? "Transferring…" : "Transfer ownership"}
+                    </button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
