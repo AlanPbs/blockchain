@@ -1,34 +1,10 @@
 "use client";
 
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { useState, useEffect } from 'react';
-
-const generateData = () => {
-    const data = [];
-    let price = 0.01;
-    const now = new Date();
-    for (let i = 24; i >= 0; i--) {
-        const time = new Date(now.getTime() - i * 60 * 60 * 1000); // Past 24h
-        // Random walk
-        const change = (Math.random() - 0.5) * 0.0005;
-        price += change;
-        if (price < 0.005) price = 0.005; // Floor
-
-        data.push({
-            time: time.getHours() + ":00",
-            price: price.toFixed(5),
-            fullDate: time.toLocaleString()
-        });
-    }
-    return data;
-};
+import staticPriceData from '@/data/static-price-data.json';
 
 export function PriceChart() {
-    const [data, setData] = useState<any[]>([]);
-
-    useEffect(() => {
-        setData(generateData());
-    }, []);
+    const data = staticPriceData.priceHistory;
 
     return (
         <div className="h-[300px] w-full bg-white p-4 rounded-xl shadow-sm border border-gray-100">
@@ -39,8 +15,8 @@ export function PriceChart() {
                 </div>
                 <div className="flex gap-2">
                     <span className="px-2 py-1 text-xs font-medium bg-gray-100 rounded text-gray-600">24H</span>
-                    <span className="px-2 py-1 text-xs font-medium bg-white text-gray-400">1W</span>
-                    <span className="px-2 py-1 text-xs font-medium bg-white text-gray-400">1M</span>
+                    {/* <span className="px-2 py-1 text-xs font-medium bg-white text-gray-400">1W</span>
+                    <span className="px-2 py-1 text-xs font-medium bg-white text-gray-400">1M</span> */}
                 </div>
             </div>
             <ResponsiveContainer width="100%" height="100%">

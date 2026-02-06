@@ -7,6 +7,8 @@ import contractsConfig from '@/lib/contracts-config.json';
 import { ContractABIs } from '@/lib/contracts';
 import { toast } from 'sonner';
 import { PriceChart } from '@/components/PriceChart';
+import staticPriceData from '@/data/static-price-data.json';
+import { getEthereumProvider } from '@/lib/ethereum';
 
 type TradeEvent = {
     id: number;
@@ -22,9 +24,9 @@ export default function Home() {
     const [isWhitelisted, setIsWhitelisted] = useState(false);
     const [loading, setLoading] = useState(true);
 
-    // Market Data
-    const [goldPrice, setGoldPrice] = useState("0");
-    const [artFloor, setArtFloor] = useState("0.001"); // Fixed value from NFT contract
+    // Market Data (static from file so all users see the same)
+    const [goldPrice, setGoldPrice] = useState(staticPriceData.currentPrice);
+    const [artFloor, setArtFloor] = useState(staticPriceData.artFloor);
 
     // Transfer State
     const [recipient, setRecipient] = useState("");
@@ -35,33 +37,35 @@ export default function Home() {
     const [recentTrades, setRecentTrades] = useState<TradeEvent[]>([]);
 
     const fetchData = async () => {
-        if (typeof (window as any).ethereum === "undefined") {
+        const providerSrc = getEthereumProvider();
+        if (!providerSrc) {
             setLoading(false);
             return;
         }
         try {
-            const provider = new ethers.BrowserProvider((window as any).ethereum);
+            const provider = new ethers.BrowserProvider(providerSrc as ethers.Eip1193Provider);
             const signer = await provider.getSigner();
             const address = await signer.getAddress();
 
-            // Contracts
             const compliance = new ethers.Contract(contractsConfig.complianceAddress, ContractABIs.ComplianceRegistry, signer);
             const token = new ethers.Contract(contractsConfig.tokenAddress, ContractABIs.AssetToken, signer);
-            const oracle = new ethers.Contract(contractsConfig.oracleAddress, ContractABIs.AssetOracle, signer);
 
-            // Parallel Fetch
-            const [verified, tokenBalance, ethBal, gldPriceWei] = await Promise.all([
+            const [verifiedResult, tokenBalanceResult, ethBalResult] = await Promise.allSettled([
                 compliance.isVerified(address),
                 token.balanceOf(address),
-                provider.getBalance(address),
-                oracle.getPrice("GLD")
+                provider.getBalance(address)
             ]);
 
-            setIsWhitelisted(verified);
-            setBalance(ethers.formatEther(tokenBalance));
-            setEthBalance(ethers.formatEther(ethBal));
-            setGoldPrice(ethers.formatEther(gldPriceWei));
-
+            if (verifiedResult.status === "fulfilled") setIsWhitelisted(verifiedResult.value);
+            if (tokenBalanceResult.status === "fulfilled") {
+                setBalance(ethers.formatEther(tokenBalanceResult.value));
+            } else {
+                setBalance("0");
+                if (tokenBalanceResult.reason?.code === "BAD_DATA" || tokenBalanceResult.reason?.message?.includes("could not decode")) {
+                    console.warn("Token balance not available on this network (wrong chain or contract not deployed).");
+                }
+            }
+            if (ethBalResult.status === "fulfilled") setEthBalance(ethers.formatEther(ethBalResult.value));
         } catch (err) {
             console.error("Dashboard fetch error:", err);
         } finally {
@@ -104,7 +108,9 @@ export default function Home() {
         const toastId = toast.loading("Processing Transfer...");
 
         try {
-            const provider = new ethers.BrowserProvider((window as any).ethereum);
+            const providerSrc = getEthereumProvider();
+            if (!providerSrc) throw new Error("No wallet");
+            const provider = new ethers.BrowserProvider(providerSrc as ethers.Eip1193Provider);
             const signer = await provider.getSigner();
             const token = new ethers.Contract(contractsConfig.tokenAddress, ContractABIs.AssetToken, signer);
 

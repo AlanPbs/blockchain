@@ -7,6 +7,7 @@ import contractsConfig from '@/lib/contracts-config.json';
 import { ContractABIs } from '@/lib/contracts';
 import { toast } from 'sonner';
 import { ArrowDownUp, RefreshCw, Wallet } from 'lucide-react';
+import { getEthereumProvider } from '@/lib/ethereum';
 
 export default function TradePage() {
   const [amount, setAmount] = useState("");
@@ -15,47 +16,63 @@ export default function TradePage() {
   const [estimatedOut, setEstimatedOut] = useState("0.00");
   const [price, setPrice] = useState("0.01"); // Default price
   const [balance, setBalance] = useState("--");
+  const [isVerified, setIsVerified] = useState<boolean | null>(null);
+  const [contractError, setContractError] = useState<string | null>(null);
 
-  // Fetch Balance & Price
+  // Fetch Balance, Price & verification status
   const fetchMarketData = async () => {
-    if (typeof (window as any).ethereum === "undefined") return;
+    const providerSrc = getEthereumProvider();
+    if (!providerSrc) return;
+    setContractError(null);
     try {
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const provider = new ethers.BrowserProvider(providerSrc as ethers.Eip1193Provider);
       const signer = await provider.getSigner();
       const address = await signer.getAddress();
+
+      const compliance = new ethers.Contract(contractsConfig.complianceAddress, ContractABIs.ComplianceRegistry, signer);
       const token = new ethers.Contract(contractsConfig.tokenAddress, ContractABIs.AssetToken, signer);
       const oracle = new ethers.Contract(contractsConfig.oracleAddress, ContractABIs.AssetOracle, signer);
 
-      // Get Price
-      const priceWei = await oracle.getPrice("GLD");
-      const priceEth = ethers.formatEther(priceWei);
-      setPrice(priceEth);
-
-      // Get Balance
-      let bal = "0";
-      if (isBuy) {
-        // User paying ETH
-        const ethBal = await provider.getBalance(address);
-        bal = ethers.formatEther(ethBal);
-        setBalance(parseFloat(bal).toFixed(4));
-      } else {
-        // User paying GLD
-        const gldBal = await token.balanceOf(address);
-        bal = ethers.formatEther(gldBal);
-        setBalance(parseFloat(bal).toFixed(2));
+      try {
+        const verified = await compliance.isVerified(address);
+        setIsVerified(verified);
+      } catch {
+        setIsVerified(false);
       }
 
+      try {
+        const priceWei = await oracle.getPrice("GLD");
+        setPrice(ethers.formatEther(priceWei));
+      } catch {
+        setPrice("0.01");
+      }
+
+      if (isBuy) {
+        const ethBal = await provider.getBalance(address);
+        setBalance(parseFloat(ethers.formatEther(ethBal)).toFixed(4));
+      } else {
+        try {
+          const gldBal = await token.balanceOf(address);
+          setBalance(parseFloat(ethers.formatEther(gldBal)).toFixed(2));
+        } catch (e: any) {
+          const isBadData = e?.code === "BAD_DATA" || e?.message?.includes("could not decode");
+          setBalance("0.00");
+          if (isBadData) {
+            setContractError("Token not available on this network. Switch to the correct chain (see config).");
+          }
+        }
+      }
     } catch (e) {
       console.error("Trade data fetch failed", e);
+      setIsVerified(false);
     }
   };
 
   useEffect(() => {
     fetchMarketData();
-    // Poll for updates
     const interval = setInterval(fetchMarketData, 5000);
     return () => clearInterval(interval);
-  }, [isBuy]); // Refetch when switching Buy/Sell mode
+  }, [isBuy]);
 
   // Update estimation when amount changes
   useEffect(() => {
@@ -74,6 +91,10 @@ export default function TradePage() {
   }, [amount, isBuy, price]);
 
   const handleTrade = async () => {
+    if (isVerified === false) {
+      toast.error("Verified traders only", { description: "You must be verified to trade. Get verified on the home page." });
+      return;
+    }
     if (!amount || parseFloat(amount) <= 0) {
       toast.error("Please enter a valid amount");
       return;
@@ -82,8 +103,9 @@ export default function TradePage() {
     const toastId = toast.loading("Processing Transaction...");
 
     try {
-      if (typeof (window as any).ethereum === "undefined") throw new Error("No Wallet");
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const providerSrc = getEthereumProvider();
+      if (!providerSrc) throw new Error("No Wallet");
+      const provider = new ethers.BrowserProvider(providerSrc as ethers.Eip1193Provider);
       const signer = await provider.getSigner();
       const dexContract = new ethers.Contract(contractsConfig.dexAddress, ContractABIs.SimpleDEX, signer);
 
@@ -184,6 +206,19 @@ export default function TradePage() {
               </div>
             </div>
 
+            {contractError && (
+              <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-sm">
+                <p className="text-amber-800 font-medium">{contractError}</p>
+              </div>
+            )}
+
+            {isVerified === false && !contractError && (
+              <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-sm">
+                <p className="text-amber-800 font-medium">You must be verified to trade.</p>
+                <p className="text-amber-700 mt-1">Get verified on the home page, then return here to swap.</p>
+              </div>
+            )}
+
             <div className="p-4 rounded-lg bg-blue-50/50 border border-blue-100 text-sm space-y-2">
               <div className="flex justify-between">
                 <span className="text-blue-600/70">Rate</span>
@@ -197,16 +232,17 @@ export default function TradePage() {
 
             <button
               onClick={handleTrade}
-              disabled={loading}
+              disabled={loading || isVerified === false}
               className={cn(
                 "w-full py-4 rounded-xl text-lg font-bold text-white shadow-lg transition-all active:scale-[0.98]",
                 loading ? "opacity-70 cursor-not-allowed" : "",
                 isBuy
                   ? "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/25"
-                  : "bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 shadow-yellow-500/25"
+                  : "bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 shadow-yellow-500/25",
+                isVerified === false ? "opacity-60 cursor-not-allowed" : ""
               )}
             >
-              {loading ? "Swapping..." : (isBuy ? "Swap ETH to GLD" : "Swap GLD to ETH")}
+              {loading ? "Swapping..." : isVerified === false ? "Verified traders only" : (isBuy ? "Swap ETH to GLD" : "Swap GLD to ETH")}
             </button>
           </div>
         </div>

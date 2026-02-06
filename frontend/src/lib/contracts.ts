@@ -15,6 +15,7 @@ export const ContractABIs = {
     // We will load these from the JSON files or hardcode minimal interfaces
     // For simplicity in this hotfix, we can use minimal human-readable ABIs
     ComplianceRegistry: [
+        "function owner() external view returns (address)",
         "function addToWhitelist(address _account) external",
         "function removeFromWhitelist(address _account) external",
         "function isVerified(address _account) external view returns (bool)",
@@ -29,6 +30,7 @@ export const ContractABIs = {
         "function decimals() external view returns (uint8)"
     ],
     AssetNFT: [
+        "function owner() external view returns (address)",
         "function balanceOf(address account) external view returns (uint256)",
         "function ownerOf(uint256 tokenId) external view returns (address)",
         "function tokenURI(uint256 tokenId) external view returns (string)",
