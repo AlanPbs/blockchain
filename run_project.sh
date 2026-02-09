@@ -1,7 +1,6 @@
 #!/bin/bash
 echo "Starting Project..."
 
-# Kill all background jobs when script exits
 cleanup() {
   echo ""
   echo "Shutting down..."
@@ -10,9 +9,9 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM
 
-# 1. Start Hardhat Node
+# 1. Start Hardhat Node (EXPOSÉ PUBLIQUEMENT)
 echo "[1/4] Starting Hardhat Node..."
-(cd contracts && npx hardhat node) &
+(cd contracts && npx hardhat node --hostname 0.0.0.0) &
 sleep 5
 
 # 2. Start Indexer Service (Must be running to receive contract addresses)
