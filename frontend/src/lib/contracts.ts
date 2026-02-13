@@ -59,6 +59,9 @@ export const ContractABIs = {
         "event TokenSold(address indexed seller, uint256 amount)"
     ],
     AssetOracle: [
-        "function getPrice(string memory symbol) external view returns (uint256)"
+        "function owner() external view returns (address)",
+        "function updatePrice(string memory symbol, uint256 price) external",
+        "function getPrice(string memory symbol) external view returns (uint256)",
+        "event PriceUpdated(string symbol, uint256 price)"
     ]
 };

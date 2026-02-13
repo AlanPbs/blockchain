@@ -25,11 +25,23 @@ export default function AdminPage() {
     const [newOwnerAddress, setNewOwnerAddress] = useState("");
     const [transferring, setTransferring] = useState(false);
 
+    // Oracle state
+    const [oracleSymbol, setOracleSymbol] = useState("");
+    const [oraclePrice, setOraclePrice] = useState("");
+    const [updatingOracle, setUpdatingOracle] = useState(false);
+
     const getComplianceContract = async () => {
         if (typeof (window as any).ethereum === "undefined") throw new Error("No Wallet");
         const provider = new ethers.BrowserProvider((window as any).ethereum);
         const signer = await provider.getSigner();
         return new ethers.Contract(contractsConfig.complianceAddress, ContractABIs.ComplianceRegistry, signer);
+    };
+
+    const getOracleContract = async () => {
+        if (typeof (window as any).ethereum === "undefined") throw new Error("No Wallet");
+        const provider = new ethers.BrowserProvider((window as any).ethereum);
+        const signer = await provider.getSigner();
+        return new ethers.Contract(contractsConfig.oracleAddress, ContractABIs.AssetOracle, signer);
     };
 
     const getNftContract = async () => {
@@ -249,6 +261,35 @@ export default function AdminPage() {
         }
     };
 
+    const handleUpdateOraclePrice = async () => {
+        if (!oracleSymbol.trim()) {
+            toast.error("Please enter an asset symbol");
+            return;
+        }
+        if (!oraclePrice || isNaN(Number(oraclePrice)) || Number(oraclePrice) <= 0) {
+            toast.error("Please enter a valid price");
+            return;
+        }
+        setUpdatingOracle(true);
+        const toastId = toast.loading(`Updating ${oracleSymbol} price...`);
+        try {
+            const contract = await getOracleContract();
+            const priceInWei = ethers.parseEther(oraclePrice);
+            const tx = await contract.updatePrice(oracleSymbol.trim(), priceInWei);
+            await tx.wait();
+            toast.dismiss(toastId);
+            toast.success("Price Updated", { description: `${oracleSymbol.trim()} → ${oraclePrice} ETH` });
+            setOracleSymbol("");
+            setOraclePrice("");
+        } catch (error: any) {
+            console.error(error);
+            toast.dismiss(toastId);
+            toast.error("Update Failed", { description: error.reason || error.message });
+        } finally {
+            setUpdatingOracle(false);
+        }
+    };
+
     // Pre-defined art pieces that can be minted
     const artPieces = [
         "Mona Lisa #1 - Analysis",
@@ -437,10 +478,24 @@ export default function AdminPage() {
                     <h2 className="text-lg font-semibold mb-4">📊 Oracle Updates</h2>
                     <p className="text-sm text-gray-500 mb-4">Update asset prices manually (Admin only).</p>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <input className="p-2 border rounded-md" placeholder="Asset Symbol (e.g. GLD)" />
-                        <input className="p-2 border rounded-md" placeholder="Price in ETH (e.g. 0.01)" />
-                        <button className="bg-slate-900 text-white py-2 rounded-md hover:bg-slate-800 font-medium">
-                            Update Price
+                        <input
+                            className="p-2 border rounded-md"
+                            placeholder="Asset Symbol (e.g. GLD)"
+                            value={oracleSymbol}
+                            onChange={(e) => setOracleSymbol(e.target.value)}
+                        />
+                        <input
+                            className="p-2 border rounded-md"
+                            placeholder="Price in ETH (e.g. 0.01)"
+                            value={oraclePrice}
+                            onChange={(e) => setOraclePrice(e.target.value)}
+                        />
+                        <button
+                            onClick={handleUpdateOraclePrice}
+                            disabled={updatingOracle}
+                            className="bg-slate-900 text-white py-2 rounded-md hover:bg-slate-800 disabled:opacity-50 font-medium"
+                        >
+                            {updatingOracle ? "Updating..." : "Update Price"}
                         </button>
                     </div>
                 </div>
