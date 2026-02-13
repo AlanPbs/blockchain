@@ -37,9 +37,8 @@ export default function Home() {
     const [isWhitelisted, setIsWhitelisted] = useState(false);
     const [loading, setLoading] = useState(true);
 
-    // Market Data (static from file so all users see the same)
-    const [goldPrice, setGoldPrice] = useState(staticPriceData.currentPrice);
-    const [artFloor, setArtFloor] = useState(staticPriceData.artFloor);
+    // Market Data (fetched from oracle)
+    const [goldPrice, setGoldPrice] = useState("--");
 
     // Transfer State
     const [recipient, setRecipient] = useState("");
@@ -59,6 +58,16 @@ export default function Home() {
         }
         try {
             const provider = new ethers.BrowserProvider(providerSrc as ethers.Eip1193Provider);
+
+            // Fetch oracle price (read-only, works without connected account)
+            try {
+                const oracle = new ethers.Contract(contractsConfig.oracleAddress, ContractABIs.AssetOracle, provider);
+                const priceWei = await oracle.getPrice("GLD");
+                setGoldPrice(ethers.formatEther(priceWei));
+            } catch {
+                console.warn("Could not fetch oracle price");
+            }
+
             const accounts = await provider.listAccounts();
             if (accounts.length === 0) {
                 setLoading(false);
@@ -271,7 +280,7 @@ export default function Home() {
                         <div>
                             <p className="text-slate-400 text-xs uppercase font-bold tracking-wider">Art Floor Price</p>
                             <p className="text-xl font-mono font-bold text-purple-400">
-                                {artFloor} ETH
+                                {staticPriceData.artFloor} ETH
                             </p>
                         </div>
                     </div>
@@ -292,7 +301,7 @@ export default function Home() {
             </div>
 
             {/* 📈 PRICE CHART */}
-            <PriceChart />
+            <PriceChart currentPrice={goldPrice} />
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Compliance Card */}

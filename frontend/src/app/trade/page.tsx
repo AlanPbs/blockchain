@@ -14,7 +14,7 @@ export default function TradePage() {
   const [isBuy, setIsBuy] = useState(true);
   const [loading, setLoading] = useState(false);
   const [estimatedOut, setEstimatedOut] = useState("0.00");
-  const [price, setPrice] = useState("0.01"); // Default price
+  const [price, setPrice] = useState("--");
   const [balance, setBalance] = useState("--");
   const [isVerified, setIsVerified] = useState<boolean | null>(null);
   const [contractError, setContractError] = useState<string | null>(null);
@@ -26,6 +26,16 @@ export default function TradePage() {
     setContractError(null);
     try {
       const provider = new ethers.BrowserProvider(providerSrc as ethers.Eip1193Provider);
+
+      // Fetch oracle price (read-only, works without connected account)
+      try {
+        const oracle = new ethers.Contract(contractsConfig.oracleAddress, ContractABIs.AssetOracle, provider);
+        const priceWei = await oracle.getPrice("GLD");
+        setPrice(ethers.formatEther(priceWei));
+      } catch {
+        console.warn("Could not fetch oracle price");
+      }
+
       const accounts = await provider.listAccounts();
       if (accounts.length === 0) return;
       const signer = await provider.getSigner();
@@ -33,20 +43,12 @@ export default function TradePage() {
 
       const compliance = new ethers.Contract(contractsConfig.complianceAddress, ContractABIs.ComplianceRegistry, signer);
       const token = new ethers.Contract(contractsConfig.tokenAddress, ContractABIs.AssetToken, signer);
-      const oracle = new ethers.Contract(contractsConfig.oracleAddress, ContractABIs.AssetOracle, signer);
 
       try {
         const verified = await compliance.isVerified(address);
         setIsVerified(verified);
       } catch {
         setIsVerified(false);
-      }
-
-      try {
-        const priceWei = await oracle.getPrice("GLD");
-        setPrice(ethers.formatEther(priceWei));
-      } catch {
-        setPrice("0.01");
       }
 
       if (isBuy) {
@@ -84,7 +86,7 @@ export default function TradePage() {
     }
     const amt = parseFloat(amount);
     if (isBuy) {
-      // Paying ETH, buying GLD. GLD Price = 0.01 ETH.
+      // Paying ETH, buying GLD.
       setEstimatedOut((amt / parseFloat(price)).toFixed(4));
     } else {
       // Selling GLD, getting ETH.

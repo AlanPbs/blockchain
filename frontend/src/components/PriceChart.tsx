@@ -1,22 +1,49 @@
 "use client";
 
+import { useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import staticPriceData from '@/data/static-price-data.json';
 
-export function PriceChart() {
-    const data = staticPriceData.priceHistory;
+interface PriceChartProps {
+    /** Current GLD price from the oracle (e.g. "0.02"). Appended as the last point. */
+    currentPrice?: string;
+}
+
+export function PriceChart({ currentPrice }: PriceChartProps) {
+    const data = useMemo(() => {
+        // Start with static history (without the last point which was the old hardcoded value)
+        const history = staticPriceData.priceHistory.slice(0, -1);
+
+        // Append the live oracle price as the final "Now" point
+        if (currentPrice && currentPrice !== "--") {
+            history.push({ time: "Now", price: currentPrice, fullDate: "" });
+        }
+
+        return history;
+    }, [currentPrice]);
+
+    // Compute % change between first and last point
+    const pctChange = useMemo(() => {
+        if (data.length < 2) return null;
+        const first = parseFloat(data[0].price);
+        const last = parseFloat(data[data.length - 1].price);
+        if (!first || !last) return null;
+        return ((last - first) / first) * 100;
+    }, [data]);
 
     return (
         <div className="h-[300px] w-full bg-white p-4 rounded-xl shadow-sm border border-gray-100">
             <div className="flex justify-between items-center mb-4">
                 <div>
                     <h3 className="text-lg font-bold text-gray-900">Price History (GLD/ETH)</h3>
-                    <p className="text-xs text-green-500 font-medium">+1.24% (24h)</p>
+                    {pctChange !== null && (
+                        <p className={`text-xs font-medium ${pctChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            {pctChange >= 0 ? '+' : ''}{pctChange.toFixed(2)}%
+                        </p>
+                    )}
                 </div>
                 <div className="flex gap-2">
                     <span className="px-2 py-1 text-xs font-medium bg-gray-100 rounded text-gray-600">24H</span>
-                    {/* <span className="px-2 py-1 text-xs font-medium bg-white text-gray-400">1W</span>
-                    <span className="px-2 py-1 text-xs font-medium bg-white text-gray-400">1M</span> */}
                 </div>
             </div>
             <ResponsiveContainer width="100%" height="100%">
