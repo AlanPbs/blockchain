@@ -27,7 +27,8 @@ export const ContractABIs = {
         "function transfer(address to, uint256 amount) external returns (bool)",
         "function allowance(address owner, address spender) external view returns (uint256)",
         "function symbol() external view returns (string)",
-        "function decimals() external view returns (uint8)"
+        "function decimals() external view returns (uint8)",
+        "event Transfer(address indexed from, address indexed to, uint256 value)"
     ],
     AssetNFT: [
         "function owner() external view returns (address)",
@@ -53,7 +54,9 @@ export const ContractABIs = {
     SimpleDEX: [
         "function buyTokens() external payable",
         "function sellTokens(uint256 amount) external",
-        "function price() external view returns (uint256)"
+        "function price() external view returns (uint256)",
+        "event TokenPurchased(address indexed buyer, uint256 amount)",
+        "event TokenSold(address indexed seller, uint256 amount)"
     ],
     AssetOracle: [
         "function getPrice(string memory symbol) external view returns (uint256)"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ethers } from 'ethers';
 import { cn } from "@/lib/utils";
 import contractsConfig from '@/lib/contracts-config.json';
@@ -10,13 +10,26 @@ import { PriceChart } from '@/components/PriceChart';
 import staticPriceData from '@/data/static-price-data.json';
 import { getEthereumProvider } from '@/lib/ethereum';
 
-type TradeEvent = {
-    id: number;
-    buyer?: string;
-    seller?: string;
+type ActivityEvent = {
+    id: string;
+    type: 'transfer' | 'buy' | 'sell' | 'mint';
+    from: string;
+    to: string;
     amount: string;
     timestamp: number;
+    txHash: string;
 };
+
+const TYPE_CONFIG = {
+    mint:     { label: 'MINT',     bg: 'bg-purple-100', text: 'text-purple-700' },
+    buy:      { label: 'BUY',      bg: 'bg-green-100',  text: 'text-green-700'  },
+    sell:     { label: 'SELL',     bg: 'bg-red-100',    text: 'text-red-700'    },
+    transfer: { label: 'TRANSFER', bg: 'bg-blue-100',   text: 'text-blue-700'   },
+} as const;
+
+function truncateAddr(addr: string) {
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
 
 export default function Home() {
     const [balance, setBalance] = useState("0");
@@ -33,8 +46,10 @@ export default function Home() {
     const [transferAmount, setTransferAmount] = useState("");
     const [transferLoading, setTransferLoading] = useState(false);
 
-    // Indexer State
-    const [recentTrades, setRecentTrades] = useState<TradeEvent[]>([]);
+    // Live activity from chain
+    const [activities, setActivities] = useState<ActivityEvent[]>([]);
+    const [chainConnected, setChainConnected] = useState(false);
+    const lastBlockRef = useRef<number>(0);
 
     const fetchData = async () => {
         const providerSrc = getEthereumProvider();
@@ -73,31 +88,125 @@ export default function Home() {
         }
     };
 
-    const fetchIndexerData = async () => {
-        try {
-            // In production: NEXT_PUBLIC_INDEXER_URL is empty, use /api/stats (Nginx routes to indexer)
-            // In dev: NEXT_PUBLIC_INDEXER_URL=http://localhost:3001, use /stats directly
-            const indexerUrl = process.env.NEXT_PUBLIC_INDEXER_URL;
-            const endpoint = indexerUrl ? `${indexerUrl}/stats` : '/api/stats';
-            const res = await fetch(endpoint);
-            if (res.ok) {
-                const data = await res.json();
-                setRecentTrades(data.trades || []);
-            }
-        } catch (e) {
-            console.error("Indexer fetch failed", e);
+    const fetchLiveActivity = useCallback(async () => {
+        const providerSrc = getEthereumProvider();
+        if (!providerSrc) {
+            setChainConnected(false);
+            return;
         }
-    };
+        try {
+            const provider = new ethers.BrowserProvider(providerSrc as ethers.Eip1193Provider);
+            const currentBlock = await provider.getBlockNumber();
+
+            // First call: look back 500 blocks. Subsequent: only new blocks.
+            const fromBlock = lastBlockRef.current > 0
+                ? lastBlockRef.current + 1
+                : Math.max(0, currentBlock - 500);
+
+            if (fromBlock > currentBlock) {
+                setChainConnected(true);
+                return;
+            }
+
+            const token = new ethers.Contract(contractsConfig.tokenAddress, ContractABIs.AssetToken, provider);
+            const dex = new ethers.Contract(contractsConfig.dexAddress, ContractABIs.SimpleDEX, provider);
+
+            const [transfers, buys, sells] = await Promise.all([
+                token.queryFilter(token.filters.Transfer(), fromBlock, currentBlock),
+                dex.queryFilter(dex.filters.TokenPurchased(), fromBlock, currentBlock),
+                dex.queryFilter(dex.filters.TokenSold(), fromBlock, currentBlock),
+            ]);
+
+            // Get block timestamps for unique block numbers
+            const allEvents = [...transfers, ...buys, ...sells];
+            const uniqueBlocks = [...new Set(allEvents.map(e => e.blockNumber))];
+            const blockTimestamps: Record<number, number> = {};
+            await Promise.all(
+                uniqueBlocks.map(async (bn) => {
+                    const block = await provider.getBlock(bn);
+                    if (block) blockTimestamps[bn] = block.timestamp * 1000;
+                })
+            );
+
+            const newEvents: ActivityEvent[] = [];
+
+            for (const e of transfers) {
+                const log = e as ethers.EventLog;
+                const from = log.args[0] as string;
+                const to = log.args[1] as string;
+                const isMint = from === ethers.ZeroAddress;
+                // Skip transfers that are part of DEX operations to avoid duplicates
+                const isDexTransfer = from.toLowerCase() === contractsConfig.dexAddress.toLowerCase()
+                    || to.toLowerCase() === contractsConfig.dexAddress.toLowerCase();
+                if (isDexTransfer) continue;
+
+                newEvents.push({
+                    id: `${log.transactionHash}-${log.index}`,
+                    type: isMint ? 'mint' : 'transfer',
+                    from, to,
+                    amount: ethers.formatEther(log.args[2]),
+                    timestamp: blockTimestamps[log.blockNumber] || Date.now(),
+                    txHash: log.transactionHash,
+                });
+            }
+
+            for (const e of buys) {
+                const log = e as ethers.EventLog;
+                newEvents.push({
+                    id: `${log.transactionHash}-${log.index}`,
+                    type: 'buy',
+                    from: log.args[0] as string,
+                    to: contractsConfig.dexAddress,
+                    amount: ethers.formatEther(log.args[1]),
+                    timestamp: blockTimestamps[log.blockNumber] || Date.now(),
+                    txHash: log.transactionHash,
+                });
+            }
+
+            for (const e of sells) {
+                const log = e as ethers.EventLog;
+                newEvents.push({
+                    id: `${log.transactionHash}-${log.index}`,
+                    type: 'sell',
+                    from: log.args[0] as string,
+                    to: contractsConfig.dexAddress,
+                    amount: ethers.formatEther(log.args[1]),
+                    timestamp: blockTimestamps[log.blockNumber] || Date.now(),
+                    txHash: log.transactionHash,
+                });
+            }
+
+            lastBlockRef.current = currentBlock;
+
+            if (newEvents.length > 0) {
+                setActivities((prev: ActivityEvent[]) => {
+                    const merged = [...newEvents, ...prev];
+                    const seen = new Set<string>();
+                    const unique = merged.filter(e => {
+                        if (seen.has(e.id)) return false;
+                        seen.add(e.id);
+                        return true;
+                    });
+                    unique.sort((a, b) => b.timestamp - a.timestamp);
+                    return unique.slice(0, 20);
+                });
+            }
+            setChainConnected(true);
+        } catch (err) {
+            console.error("Live activity fetch error:", err);
+            setChainConnected(false);
+        }
+    }, []);
 
     useEffect(() => {
         fetchData();
-        fetchIndexerData();
+        fetchLiveActivity();
         const interval = setInterval(() => {
             fetchData();
-            fetchIndexerData();
+            fetchLiveActivity();
         }, 5000);
         return () => clearInterval(interval);
-    }, []);
+    }, [fetchLiveActivity]);
 
     const handleTransfer = async () => {
         if (!recipient || !transferAmount) {
@@ -266,44 +375,59 @@ export default function Home() {
                         <h2 className="text-lg font-bold flex items-center gap-2">
                             <span>📊</span> Live Market Activity
                         </h2>
-                        <span className="text-xs font-mono text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100">
-                            ● Connected to Indexer
+                        <span className={cn(
+                            "text-xs font-mono px-2 py-1 rounded border",
+                            chainConnected
+                                ? "text-green-600 bg-green-50 border-green-100"
+                                : "text-red-600 bg-red-50 border-red-100"
+                        )}>
+                            {chainConnected ? "● On-chain" : "● Disconnected"}
                         </span>
                     </div>
 
                     <div className="overflow-hidden">
-                        {recentTrades.length === 0 ? (
+                        {activities.length === 0 ? (
                             <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                                <p className="text-gray-400 italic">Waiting for new trades...</p>
+                                <p className="text-gray-400 italic">
+                                    {chainConnected ? "No activity yet on this chain" : "Connect wallet to see live activity"}
+                                </p>
                             </div>
                         ) : (
                             <table className="w-full">
                                 <thead className="bg-gray-50 text-xs uppercase text-gray-500 font-medium">
                                     <tr>
                                         <th className="px-4 py-3 text-left">Type</th>
+                                        <th className="px-4 py-3 text-left">From / To</th>
                                         <th className="px-4 py-3 text-right">Amount</th>
                                         <th className="px-4 py-3 text-right">Time</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {recentTrades.map((trade) => (
-                                        <tr key={trade.id} className="hover:bg-slate-50 transition-colors">
-                                            <td className="px-4 py-3">
-                                                <span className={cn(
-                                                    "px-2 py-1 rounded text-xs font-bold",
-                                                    trade.buyer ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                                                )}>
-                                                    {trade.buyer ? "BUY ORDER" : "SELL ORDER"}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 text-right font-mono font-medium">
-                                                {parseFloat(ethers.formatEther(trade.amount)).toFixed(2)} GLD
-                                            </td>
-                                            <td className="px-4 py-3 text-right text-gray-400 text-sm">
-                                                {new Date(trade.timestamp).toLocaleTimeString()}
-                                            </td>
-                                        </tr>
-                                    ))}
+                                    {activities.map((event: ActivityEvent) => {
+                                        const cfg = TYPE_CONFIG[event.type];
+                                        return (
+                                            <tr key={event.id} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-4 py-3">
+                                                    <span className={cn("px-2 py-1 rounded text-xs font-bold", cfg.bg, cfg.text)}>
+                                                        {cfg.label}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                                                    {event.type === 'mint' ? (
+                                                        <span>→ {truncateAddr(event.to)}</span>
+                                                    ) : (
+                                                        <span>{truncateAddr(event.from)} → {truncateAddr(event.to)}</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3 text-right font-mono font-medium">
+                                                    {parseFloat(event.amount).toFixed(2)} GLD
+                                                </td>
+                                                <td className="px-4 py-3 text-right text-gray-400 text-sm">
+                                                    {new Date(event.timestamp).toLocaleTimeString()}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         )}
