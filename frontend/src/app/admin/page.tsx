@@ -111,22 +111,34 @@ export default function AdminPage() {
             setCheckingAuth(false);
             return;
         }
+        const provider = new ethers.BrowserProvider((window as any).ethereum);
+        const nftContract = new ethers.Contract(contractsConfig.nftAddress, ContractABIs.AssetNFT, provider);
+
+        let owner: string | null = null;
         try {
-            const provider = new ethers.BrowserProvider((window as any).ethereum);
-            const signer = await provider.getSigner();
-            const address = await signer.getAddress();
-
-            const nftContract = new ethers.Contract(contractsConfig.nftAddress, ContractABIs.AssetNFT, provider);
-            const owner = await nftContract.owner();
-
+            owner = await nftContract.owner();
             setContractOwnerAddress(owner);
-            setCurrentUserAddress(address);
-            setIsOwner(owner.toLowerCase() === address.toLowerCase());
+        } catch (e) {
+            console.error("Failed to fetch contract owner", e);
+            setContractOwnerAddress(null);
+        }
+
+        // Only if already connected: get current user (do not trigger connect popup)
+        try {
+            const accounts = await provider.listAccounts();
+            if (accounts.length === 0) {
+                setCurrentUserAddress(null);
+                setIsOwner(false);
+            } else {
+                const signer = await provider.getSigner();
+                const address = await signer.getAddress();
+                setCurrentUserAddress(address);
+                setIsOwner(owner != null && owner.toLowerCase() === address.toLowerCase());
+            }
         } catch (e) {
             console.error("Auth check failed", e);
-            setIsOwner(false);
-            setContractOwnerAddress(null);
             setCurrentUserAddress(null);
+            setIsOwner(false);
         } finally {
             setCheckingAuth(false);
         }

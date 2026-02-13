@@ -26,6 +26,8 @@ export default function TradePage() {
     setContractError(null);
     try {
       const provider = new ethers.BrowserProvider(providerSrc as ethers.Eip1193Provider);
+      const accounts = await provider.listAccounts();
+      if (accounts.length === 0) return;
       const signer = await provider.getSigner();
       const address = await signer.getAddress();
 

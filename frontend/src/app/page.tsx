@@ -59,6 +59,11 @@ export default function Home() {
         }
         try {
             const provider = new ethers.BrowserProvider(providerSrc as ethers.Eip1193Provider);
+            const accounts = await provider.listAccounts();
+            if (accounts.length === 0) {
+                setLoading(false);
+                return;
+            }
             const signer = await provider.getSigner();
             const address = await signer.getAddress();
 
