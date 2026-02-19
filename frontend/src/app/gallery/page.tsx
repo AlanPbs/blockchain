@@ -41,6 +41,11 @@ export default function GalleryPage() {
         if (typeof (window as any).ethereum === "undefined") return;
         try {
             const provider = new ethers.BrowserProvider((window as any).ethereum);
+            const accounts = await provider.listAccounts();
+            if (accounts.length === 0) {
+                setLoading(false);
+                return;
+            }
             const signer = await provider.getSigner();
             const address = await signer.getAddress();
             setCurrentAddress(address.toLowerCase());

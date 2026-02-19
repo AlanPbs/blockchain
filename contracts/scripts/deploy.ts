@@ -18,28 +18,28 @@ async function main() {
     const oracleAddress = await assetOracle.getAddress();
     console.log("AssetOracle deployed to:", oracleAddress);
 
-    // 3. Deploy AssetToken (ERC20 - Fungible)
+    // 3. Deploy AssetToken
     const AssetToken = await ethers.getContractFactory("AssetToken");
     const assetToken = await AssetToken.deploy("Gold", "GLD", complianceAddress);
     await assetToken.waitForDeployment();
     const tokenAddress = await assetToken.getAddress();
     console.log("AssetToken deployed to:", tokenAddress);
 
-    // 4. Deploy AssetNFT (ERC721 - Non-Fungible)
+    // 4. Deploy AssetNFT
     const AssetNFT = await ethers.getContractFactory("AssetNFT");
     const assetNFT = await AssetNFT.deploy(complianceAddress);
     await assetNFT.waitForDeployment();
     const nftAddress = await assetNFT.getAddress();
     console.log("AssetNFT deployed to:", nftAddress);
 
-    // 5. Deploy SimpleDEX
-    // Set initial price in Oracle first (0.01 ETH)
+    // 5. Initial Price
     const initialPrice = ethers.parseEther("0.01");
-    await assetOracle.updatePrice("GLD", initialPrice);
+    const priceTx = await assetOracle.updatePrice("GLD", initialPrice);
+    await priceTx.wait(); // Attente de confirmation
     console.log("Oracle price set for GLD: 0.01 ETH");
 
+    // 6. Deploy SimpleDEX
     const SimpleDEX = await ethers.getContractFactory("SimpleDEX");
-    // Pass token AND oracle address
     const simpleDEX = await SimpleDEX.deploy(tokenAddress, oracleAddress);
     await simpleDEX.waitForDeployment();
     const dexAddress = await simpleDEX.getAddress();
@@ -48,35 +48,45 @@ async function main() {
     // --- Setup & Initial Configuration ---
 
     // Whitelist deployer
-    await complianceRegistry.addToWhitelist(deployer.address);
-    console.log("Whitelisted deployer");
+    console.log("Whitelisting deployer...");
+    const whiteDeployerTx = await complianceRegistry.addToWhitelist(deployer.address);
+    await whiteDeployerTx.wait(); // CRITIQUE : Attendre la validation avant de minter
+    console.log("Whitelisted deployer confirmed");
 
     // Mint ERC20 tokens
-    const mintAmount = ethers.parseEther("100000"); // 100k tokens
-    await assetToken.mint(deployer.address, mintAmount);
+    const mintAmount = ethers.parseEther("100000");
+    const mintTokenTx = await assetToken.mint(deployer.address, mintAmount);
+    await mintTokenTx.wait();
     console.log("Minted 100k GLD tokens to deployer");
 
-    // Mint NFT (The Mona Lisa)
-    await assetNFT.mint(deployer.address, "Mona Lisa #1 - Analysis");
+    // Mint NFT
+    const mintNftTx = await assetNFT.mint(deployer.address, "Mona Lisa #1 - Analysis");
+    await mintNftTx.wait();
     console.log("Minted Mona Lisa NFT to deployer");
 
     // Approve DEX
-    await assetToken.approve(dexAddress, mintAmount);
+    const approveTx = await assetToken.approve(dexAddress, mintAmount);
+    await approveTx.wait();
 
     // Whitelist DEX
-    await complianceRegistry.addToWhitelist(dexAddress);
+    const whiteDexTx = await complianceRegistry.addToWhitelist(dexAddress);
+    await whiteDexTx.wait();
     console.log("Whitelisted DEX contract");
 
     // Liquidity
-    await assetToken.transfer(dexAddress, ethers.parseEther("50000"));
-    await deployer.sendTransaction({ to: dexAddress, value: ethers.parseEther("10") });
+    const transferTx = await assetToken.transfer(dexAddress, ethers.parseEther("50000"));
+    await transferTx.wait();
+    
+    const ethTx = await deployer.sendTransaction({ 
+        to: dexAddress, 
+        value: ethers.parseEther("0.1") // Réduit de 10 à 0.1 pour économiser sur Sepolia
+    });
+    await ethTx.wait();
     console.log("Provided Liquidity to DEX");
 
     // --- Save to Frontend ---
     const fs = require("fs");
     const path = require("path");
-
-    // Ensure directory exists
     const contractsDir = path.join(__dirname, "../../frontend/src/lib");
     if (!fs.existsSync(contractsDir)) {
         fs.mkdirSync(contractsDir, { recursive: true });
@@ -88,7 +98,7 @@ async function main() {
         tokenAddress,
         nftAddress,
         dexAddress,
-        networkId: "31337"
+        networkId: "11155111" // Correction du Chain ID pour Sepolia
     };
 
     fs.writeFileSync(
@@ -107,11 +117,9 @@ async function main() {
         });
         if (response.ok) {
             console.log("Indexer initialized successfully!");
-        } else {
-            console.error("Failed to initialize indexer:", response.statusText);
         }
     } catch (error) {
-        console.warn("Could not contact Indexer (is it running?):", error);
+        console.warn("Could not contact Indexer:", error);
     }
 
     console.log("Deployment and Setup Complete!");
